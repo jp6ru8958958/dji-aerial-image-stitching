@@ -79,7 +79,7 @@ class Stitcher(object):
         cv2.imwrite('results/Result.jpg', output_img)
 
         
-def imagedata_sorting_and_save(image_list):
+def image_data_sorting_and_save(image_list):
     return
 
 def read_file(data_folder):
