@@ -21,7 +21,7 @@ class Stitcher(object):
         
     def find_keypoints(self):
         # Create our ORB detector and detect keypoints and descriptors
-        orb = cv2.ORB_create(nfeatures=2000)
+        orb = cv2.ORB_create(nfeatures=3000)
 
         # Find the key points and descriptors with ORB
         self.keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
@@ -89,8 +89,7 @@ def read_file(data_folder):
         GPSdata = gpsphoto.getGPSData(image_path)
         image_list.append(ImageInfoFormat(image, GPSdata['Latitude'], GPSdata['Longitude']))
         print(image, GPSdata['Latitude'], GPSdata['Longitude'])
-    print('Read images success.')
-    print(image_list)
+    print('Read images in {} images success.'.format(data_folder))
     return image_list
 
 
@@ -98,9 +97,12 @@ if __name__ == '__main__':
     # data_folder = sys.argv[1]
     data_folder = 'data/ne20210202' # for test
     # image_list = read_file(data_folder)
-    image1 = cv2.imread(data_folder+'/DJI_0104.JPG')
-    image2 = cv2.imread(data_folder+'/DJI_0105.JPG')
+
+    
+    image1 = cv2.imread(data_folder+'/DJI_0131.JPG')
+    image2 = cv2.imread(data_folder+'/DJI_0132.JPG')    
     stitcher = Stitcher(image1, image2)
     stitcher.find_keypoints()
     stitcher.get_good_matches()
     stitcher.warp_images()
+    
