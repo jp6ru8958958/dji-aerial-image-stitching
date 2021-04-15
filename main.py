@@ -1,10 +1,12 @@
 import sys
+import os
 from os import listdir
 from GPSPhoto import gpsphoto
 import cv2
 import panorama
 import numpy as np
 import imutils
+import shutil
 from math import sqrt
 
 
@@ -18,11 +20,13 @@ class ImageInfoFormat(object):
         return repr((self.name, self.latitude, self.longitude, self.distance_to_origin))
 
 class Stitcher(object):
-    def __init__(self, image1, image2):
+    def __init__(self, image1, image2, step):
+        self.MAX_FEATURES = 10000
+        self.GOOD_MATCH_PERCENT = 0.55
         self.image1 = cv2.imread(image1)
         self.image2 = cv2.imread(image2)
-        self.image1_grey = cv2.cvtColor(self.image1, cv2.COLOR_BGR2GRAY)
-        self.image2_grey = cv2.cvtColor(self.image2, cv2.COLOR_BGR2GRAY)
+        self.step = step
+        self.output_img = None
         
     def find_keypoints(self):
         # Create our ORB detector and detect keypoints and descriptors
@@ -41,15 +45,13 @@ class Stitcher(object):
         return
 
     def get_good_matches(self):
-        MAX_FEATURES = 500
-        GOOD_MATCH_PERCENT = 0.45
 
         # Convert images to grayscale
         img1Gray = cv2.cvtColor(self.image1, cv2.COLOR_BGR2GRAY)
         img2Gray = cv2.cvtColor(self.image2, cv2.COLOR_BGR2GRAY)
 
         # Detect ORB features and compute descriptors.
-        orb = cv2.ORB_create(MAX_FEATURES)
+        orb = cv2.ORB_create(self.MAX_FEATURES)
         keypoints1, descriptors1 = orb.detectAndCompute(img1Gray, None)
         keypoints2, descriptors2 = orb.detectAndCompute(img2Gray, None)
 
@@ -61,7 +63,7 @@ class Stitcher(object):
         matches.sort(key=lambda x: x.distance, reverse=False)
 
         # Remove not so good matches
-        numGoodMatches = int(len(matches) * GOOD_MATCH_PERCENT)
+        numGoodMatches = int(len(matches) * self.GOOD_MATCH_PERCENT)
         matches = matches[:numGoodMatches]
 
         # Draw top matches
@@ -99,60 +101,76 @@ class Stitcher(object):
         [x_max, y_max] = np.int32(points.max(axis=0).ravel() + 0.5)
         H_translation = np.array([[1, 0, -x_min], [0, 1, -y_min], [0, 0, 1]])
 
-        output_img = cv2.warpPerspective(self.image1, H_translation.dot(self.H), (x_max - x_min, y_max - y_min))
-        output_img[-y_min:self.image2.shape[0] - y_min, -x_min:self.image2.shape[1] - x_min] = self.image2
+        self.output_img = cv2.warpPerspective(self.image1, H_translation.dot(self.H), (x_max - x_min, y_max - y_min))
+        self.output_img[-y_min:self.image2.shape[0] - y_min, -x_min:self.image2.shape[1] - x_min] = self.image2
         
         cv2.imwrite('results/image1.jpg', self.image1)
         cv2.imwrite('results/image2.jpg', self.image2)
-        cv2.imwrite('results/Result.jpg', output_img)
+        cv2.imwrite('results/temp.jpg', self.output_img)
+        cv2.imwrite('results/Result.jpg', self.output_img)
 
-        cv2.imshow('Result.jpg', cv2.resize(output_img, (500, 500)))
-        cv2.waitKey(0)
+        cv2.imshow('Result.jpg', cv2.resize(self.output_img, (800, 800)))
+        cv2.waitKey(500)
         cv2.destroyAllWindows()
+
+        return
+
+    def save_step_result(self):
+        if self.step == 0:
+            try:
+                shutil.rmtree('results/steps')
+            except(FileNotFoundError):
+                os.mkdir('results/steps')
+            os.mkdir('results/steps')
+        cv2.imwrite('results/steps/step_{}.jpg'.format(str(self.step+1)), self.output_img)
 
         return
 
 
 def read_file(data_folder):
     images_list = []
+    lat_temp = lon_temp = 0
     for image in listdir(data_folder):
         image_path = '{folder}/{filename}'.format(folder=data_folder, filename=image)
         GPSdata = gpsphoto.getGPSData(image_path)
-        distance_to_origin = sqrt(GPSdata['Latitude']**2 + GPSdata['Longitude']**2)
+        if lat_temp == 0: # First loop, choose one image as origin point.
+            lat_temp = GPSdata['Latitude']
+            lon_temp = GPSdata['Longitude']
+        distance_to_origin = sqrt((GPSdata['Latitude']-lat_temp)**2 + (GPSdata['Longitude']-lon_temp)**2)
         image_info = ImageInfoFormat(
                 '{}/{}'.format(data_folder, image),
-                GPSdata['Latitude'], 
-                GPSdata['Longitude'], 
+                GPSdata['Latitude'],
+                GPSdata['Longitude'],
                 distance_to_origin)
         images_list.append(image_info)
         print(image_info)
     print(' Read images in {} images success. \n Total {} images.'.format(data_folder, len(images_list)))
     images_list = sorted(images_list, key = lambda s: s.distance_to_origin)
+    for i in images_list:
+        print(i.distance_to_origin, i.name)
     return images_list
 
 def stitch(images_list):
     list_length = len(images_list)
-    cv2.imwrite('results/Result.jpg', cv2.imread(images_list[0].name))
+    cv2.imwrite('results/temp.jpg', cv2.imread(images_list[0].name))
+    print(' {}/{}   {}'.format(1, list_length, images_list[0].name))
     for i, temp in enumerate(images_list[1::]):
-        stitcher = Stitcher('results/Result.jpg', temp.name)
+        stitcher = Stitcher(temp.name, 'results/temp.jpg', i)
         stitcher.find_keypoints()
         stitcher.get_good_matches()
         stitcher.move_and_combine_images()
+        stitcher.save_step_result()
+
         print(' {}/{}   {}'.format(i+2, list_length, temp.name))
-        
 
 
 if __name__ == '__main__':
     data_folder = sys.argv[1]
     images_list = read_file(data_folder)
     stitch(images_list)
+    
     '''
-    data_folder = 'data/ne20210202' # for test
-    image1 = cv2.imread(data_folder+'/DJI_0151.JPG')
-    image2 = cv2.imread(data_folder+'/DJI_0158.JPG')
-    '''
-    '''
-    stitcher = Stitcher(image1, image2)
+    stitcher = Stitcher('data/ne20210202/DJI_0169.JPG', 'data/ne20210202/DJI_0168.JPG')
     stitcher.find_keypoints()
     stitcher.get_good_matches()
     stitcher.move_and_combine_images()
