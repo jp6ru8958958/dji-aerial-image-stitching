@@ -146,8 +146,7 @@ def read_file(data_folder):
         print(image_info)
     print(' Read images in {} images success. \n Total {} images.'.format(data_folder, len(images_list)))
     images_list = sorted(images_list, key = lambda s: s.distance_to_origin)
-    for i in images_list:
-        print(i.distance_to_origin, i.name)
+
     return images_list
 
 def stitch(images_list):
