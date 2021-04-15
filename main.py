@@ -16,6 +16,7 @@ class ImageInfoFormat(object):
         self.latitude = latitude
         self.longitude = longitude
         self.distance_to_origin = distance_to_origin
+
     def __repr__(self):
         return repr((self.name, self.latitude, self.longitude, self.distance_to_origin))
 
@@ -42,6 +43,7 @@ class Stitcher(object):
 
         # Find matching points
         self.matches = bf.knnMatch(descriptors1, descriptors2, k=2)
+
         return
 
     def get_good_matches(self):
@@ -80,6 +82,7 @@ class Stitcher(object):
 
         # Find homography
         self.H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
+
         return
 
     def move_and_combine_images(self):
@@ -154,6 +157,7 @@ def stitch(images_list):
     cv2.imwrite('results/temp.jpg', cv2.imread(images_list[0].name))
     print(' {}/{}   {}'.format(1, list_length, images_list[0].name))
     for i, temp in enumerate(images_list[1::]):
+
         stitcher = Stitcher(temp.name, 'results/temp.jpg', i)
         stitcher.find_keypoints()
         stitcher.get_good_matches()
@@ -167,10 +171,4 @@ if __name__ == '__main__':
     data_folder = sys.argv[1]
     images_list = read_file(data_folder)
     stitch(images_list)
-    
-    '''
-    stitcher = Stitcher('data/ne20210202/DJI_0169.JPG', 'data/ne20210202/DJI_0168.JPG')
-    stitcher.find_keypoints()
-    stitcher.get_good_matches()
-    stitcher.move_and_combine_images()
-    '''
+
