@@ -22,45 +22,42 @@ class ImageInfoFormat(object):
 
 class Stitcher(object):
     def __init__(self, image1, image2, step):
+        self.step = step
         self.MAX_FEATURES = 10000
         self.GOOD_MATCH_PERCENT = 0.05
         self.image1 = cv2.imread(image1)
         self.image2 = cv2.imread(image2)
-        self.step = step
+        self.keypoints1 = None
+        self.keypoints1 = None
+        self.H = None
         self.output_img = None
-        
-    def find_keypoints(self):
-        # Create our ORB detector and detect keypoints and descriptors
-        orb = cv2.ORB_create(nfeatures=3000)
 
-        # Find the key points and descriptors with ORB
-        self.keypoints1, descriptors1 = orb.detectAndCompute(self.image1, None)
-        self.keypoints2, descriptors2 = orb.detectAndCompute(self.image2, None)
-
-        # Create a BFMatcher object.
-        # It will find all of the matching keypoints on two images
-        bf = cv2.BFMatcher_create(cv2.NORM_HAMMING)
-
-        # Find matching points
-        self.matches = bf.knnMatch(descriptors1, descriptors2, k=2)
-
-        return
-
-    def get_good_matches(self):
+    def find_keypoints(self, algo):
 
         # Convert images to grayscale
         img1Gray = cv2.cvtColor(self.image1, cv2.COLOR_BGR2GRAY)
         img2Gray = cv2.cvtColor(self.image2, cv2.COLOR_BGR2GRAY)
 
-        # Detect ORB features and compute descriptors.
-        orb = cv2.ORB_create(self.MAX_FEATURES)
-        keypoints1, descriptors1 = orb.detectAndCompute(img1Gray, None)
-        keypoints2, descriptors2 = orb.detectAndCompute(img2Gray, None)
+        if algo == 'orb':
+            detect_algo = cv2.ORB_create(self.MAX_FEATURES)
+            matcher = cv2.DescriptorMatcher_create(cv2.DESCRIPTOR_MATCHER_BRUTEFORCE_HAMMING)
+        elif algo == 'surf':
+            detect_algo = cv2.xfeatures2d_SURF().create()
+            matcher = cv2.BFMatcher(cv2.NORM_L1,crossCheck=False)
+        elif algo == 'sift':
+            detect_algo = cv2.xfeatures2d_SIFT().create()
+            matcher = cv2.BFMatcher(cv2.NORM_L1,crossCheck=False)
+        else:
+            print('\nDetect algorithm not exist.\n')
 
-        # Match features.
-        matcher = cv2.DescriptorMatcher_create(cv2.DESCRIPTOR_MATCHER_BRUTEFORCE_HAMMING)
+        self.keypoints1, descriptors1 = detect_algo.detectAndCompute(img1Gray, None)
+        self.keypoints2, descriptors2 = detect_algo.detectAndCompute(img2Gray, None)
+
         matches = matcher.match(descriptors1, descriptors2, None)
 
+        return matches
+
+    def get_good_matches(self, matches):
         # Sort matches by score
         matches.sort(key=lambda x: x.distance, reverse=False)
 
@@ -69,7 +66,7 @@ class Stitcher(object):
         matches = matches[:numGoodMatches]
 
         # Draw top matches
-        imMatches = cv2.drawMatches(self.image1, keypoints1, self.image2, keypoints2, matches, None)
+        imMatches = cv2.drawMatches(self.image1, self.keypoints1, self.image2, self.keypoints2, matches, None)
         cv2.imwrite('results/matches.jpg', imMatches)
 
         # Extract location of good matches
@@ -77,15 +74,15 @@ class Stitcher(object):
         points2 = np.zeros((len(matches), 2), dtype=np.float32)
 
         for i, match in enumerate(matches):
-            points1[i, :] = keypoints1[match.queryIdx].pt
-            points2[i, :] = keypoints2[match.trainIdx].pt
+            points1[i, :] = self.keypoints1[match.queryIdx].pt
+            points2[i, :] = self.keypoints2[match.trainIdx].pt
 
         # Find homography
-        self.H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
+        H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
+        
+        return H
 
-        return
-
-    def move_and_combine_images(self):
+    def move_and_combine_images(self, H):
         points0 = np.array([
             [0, 0], [0, self.image2.shape[0]], 
             [self.image2.shape[1], self.image2.shape[0]], 
@@ -98,7 +95,7 @@ class Stitcher(object):
             [self.image1.shape[1], 0]
             ], dtype = np.float32)
         points1 = points1.reshape((-1, 1, 2))
-        points2 = cv2.perspectiveTransform(points1, self.H)
+        points2 = cv2.perspectiveTransform(points1, H)
         points = np.concatenate((points0, points2), axis=0)
         [x_min, y_min] = np.int32(points.min(axis=0).ravel() - 0.5)
         [x_max, y_max] = np.int32(points.max(axis=0).ravel() + 0.5)
@@ -106,7 +103,7 @@ class Stitcher(object):
 
         cv2.rectangle(self.image1,(int(0),int(0)),(int(self.image1.shape[1]),int(self.image1.shape[0])),(0,0,0),5)
 
-        self.output_img = cv2.warpPerspective(self.image1, H_translation.dot(self.H), (x_max - x_min, y_max - y_min))
+        self.output_img = cv2.warpPerspective(self.image1, H_translation.dot(H), (x_max - x_min, y_max - y_min))
         self.output_img[
             -y_min:self.image2.shape[0] - y_min, 
             -x_min:self.image2.shape[1] - x_min] = self.image2
@@ -131,6 +128,7 @@ class Stitcher(object):
             os.mkdir('results/steps')
         if self.step % interlacing == 0:
             cv2.imwrite('results/steps/step_{}.jpg'.format(str(self.step+1)), self.output_img)
+
         return
 
 
@@ -140,13 +138,13 @@ def read_file(data_folder):
     for image in listdir(data_folder):
         image_path = '{folder}/{filename}'.format(folder=data_folder, filename=image)
         GPSdata = gpsphoto.getGPSData(image_path)
-        ''' Another find stitching seq algorithm maybe better than this.
+        # Another find stitching seq algorithm maybe better than this.
         if lat_temp == 0: # First loop, choose one image as origin point.
             lat_temp = GPSdata['Latitude']
             lon_temp = GPSdata['Longitude']
         distance_to_origin = sqrt((GPSdata['Latitude']-lat_temp)**2 + (GPSdata['Longitude']-lon_temp)**2)
-        '''
-        distance_to_origin = sqrt((GPSdata['Latitude']-0)**2 + (GPSdata['Longitude']-0)**2)
+        
+        # distance_to_origin = sqrt((GPSdata['Latitude']-0)**2 + (GPSdata['Longitude']-0)**2)
         image_info = ImageInfoFormat(
                 '{}/{}'.format(data_folder, image),
                 GPSdata['Latitude'],
@@ -166,17 +164,21 @@ def stitch(images_list):
     for i, temp in enumerate(images_list[1::]):
 
         stitcher = Stitcher('results/temp.jpg', temp.name, i)
-        stitcher.find_keypoints()
-        stitcher.get_good_matches()
-        stitcher.move_and_combine_images()
+        matches = stitcher.find_keypoints('surf')
+        H = stitcher.get_good_matches(matches)
+        print(H, '\n')
+        stitcher.move_and_combine_images(H)
         stitcher.save_step_result()
 
         print(' {}/{}   {}'.format(i+2, list_length, temp.name))
     print('stitch images finish.')
+
+    return
 
 
 if __name__ == '__main__':
     data_folder = sys.argv[1]
     images_list = read_file(data_folder)
     stitch(images_list)
-
+    
+    return
