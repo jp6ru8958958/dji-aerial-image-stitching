@@ -23,7 +23,7 @@ class ImageInfoFormat(object):
 class Stitcher(object):
     def __init__(self, image1, image2, step):
         self.MAX_FEATURES = 10000
-        self.GOOD_MATCH_PERCENT = 0.55
+        self.GOOD_MATCH_PERCENT = 0.05
         self.image1 = cv2.imread(image1)
         self.image2 = cv2.imread(image2)
         self.step = step
@@ -90,13 +90,13 @@ class Stitcher(object):
             [0, 0], [0, self.image2.shape[0]], 
             [self.image2.shape[1], self.image2.shape[0]], 
             [self.image2.shape[1], 0]
-            ], dtype=np.float32)
+            ], dtype = np.float32)
         points0 = points0.reshape((-1, 1, 2))
         points1 = np.array([
             [0, 0], [0, self.image1.shape[0]], 
             [self.image1.shape[1], self.image2.shape[0]], 
             [self.image1.shape[1], 0]
-            ], dtype=np.float32)
+            ], dtype = np.float32)
         points1 = points1.reshape((-1, 1, 2))
         points2 = cv2.perspectiveTransform(points1, self.H)
         points = np.concatenate((points0, points2), axis=0)
@@ -104,29 +104,33 @@ class Stitcher(object):
         [x_max, y_max] = np.int32(points.max(axis=0).ravel() + 0.5)
         H_translation = np.array([[1, 0, -x_min], [0, 1, -y_min], [0, 0, 1]])
 
+        cv2.rectangle(self.image1,(int(0),int(0)),(int(self.image1.shape[1]),int(self.image1.shape[0])),(0,0,0),5)
+
         self.output_img = cv2.warpPerspective(self.image1, H_translation.dot(self.H), (x_max - x_min, y_max - y_min))
-        self.output_img[-y_min:self.image2.shape[0] - y_min, -x_min:self.image2.shape[1] - x_min] = self.image2
-        
+        self.output_img[
+            -y_min:self.image2.shape[0] - y_min, 
+            -x_min:self.image2.shape[1] - x_min] = self.image2
+
         cv2.imwrite('results/image1.jpg', self.image1)
         cv2.imwrite('results/image2.jpg', self.image2)
         cv2.imwrite('results/temp.jpg', self.output_img)
         cv2.imwrite('results/Result.jpg', self.output_img)
-
+        
         cv2.imshow('Result.jpg', cv2.resize(self.output_img, (800, 800)))
-        cv2.waitKey(500)
+        cv2.waitKey(1000)
         cv2.destroyAllWindows()
 
         return
 
-    def save_step_result(self):
+    def save_step_result(self, interlacing=1):
         if self.step == 0:
             try:
                 shutil.rmtree('results/steps')
             except(FileNotFoundError):
                 os.mkdir('results/steps')
             os.mkdir('results/steps')
-        cv2.imwrite('results/steps/step_{}.jpg'.format(str(self.step+1)), self.output_img)
-
+        if self.step % interlacing == 0:
+            cv2.imwrite('results/steps/step_{}.jpg'.format(str(self.step+1)), self.output_img)
         return
 
 
@@ -136,10 +140,13 @@ def read_file(data_folder):
     for image in listdir(data_folder):
         image_path = '{folder}/{filename}'.format(folder=data_folder, filename=image)
         GPSdata = gpsphoto.getGPSData(image_path)
+        ''' Another find stitching seq algorithm maybe better than this.
         if lat_temp == 0: # First loop, choose one image as origin point.
             lat_temp = GPSdata['Latitude']
             lon_temp = GPSdata['Longitude']
         distance_to_origin = sqrt((GPSdata['Latitude']-lat_temp)**2 + (GPSdata['Longitude']-lon_temp)**2)
+        '''
+        distance_to_origin = sqrt((GPSdata['Latitude']-0)**2 + (GPSdata['Longitude']-0)**2)
         image_info = ImageInfoFormat(
                 '{}/{}'.format(data_folder, image),
                 GPSdata['Latitude'],
@@ -147,7 +154,7 @@ def read_file(data_folder):
                 distance_to_origin)
         images_list.append(image_info)
         print(image_info)
-    print(' Read images in {} images success. \n Total {} images.'.format(data_folder, len(images_list)))
+    print(' Read images in {} images success. \n Total {} images.\n'.format(data_folder, len(images_list)))
     images_list = sorted(images_list, key = lambda s: s.distance_to_origin)
 
     return images_list
@@ -158,13 +165,14 @@ def stitch(images_list):
     print(' {}/{}   {}'.format(1, list_length, images_list[0].name))
     for i, temp in enumerate(images_list[1::]):
 
-        stitcher = Stitcher(temp.name, 'results/temp.jpg', i)
+        stitcher = Stitcher('results/temp.jpg', temp.name, i)
         stitcher.find_keypoints()
         stitcher.get_good_matches()
         stitcher.move_and_combine_images()
         stitcher.save_step_result()
 
         print(' {}/{}   {}'.format(i+2, list_length, temp.name))
+    print('stitch images finish.')
 
 
 if __name__ == '__main__':
