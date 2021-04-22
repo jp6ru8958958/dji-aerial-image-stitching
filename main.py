@@ -23,8 +23,8 @@ class ImageInfoFormat(object):
 class Stitcher(object):
     def __init__(self, image1, image2, step):
         self.step = step
-        self.MAX_FEATURES = 10000
-        self.GOOD_MATCH_PERCENT = 0.05
+        self.MAX_FEATURES = 5000
+        self.GOOD_MATCH_PERCENT = 0.25
         self.image1 = cv2.imread(image1)
         self.image2 = cv2.imread(image2)
         self.keypoints1 = None
@@ -33,26 +33,25 @@ class Stitcher(object):
         self.output_img = None
 
     def find_keypoints(self, algo):
-
         # Convert images to grayscale
         img1Gray = cv2.cvtColor(self.image1, cv2.COLOR_BGR2GRAY)
         img2Gray = cv2.cvtColor(self.image2, cv2.COLOR_BGR2GRAY)
 
         if algo == 'orb':
             detect_algo = cv2.ORB_create(self.MAX_FEATURES)
-            matcher = cv2.DescriptorMatcher_create(cv2.DESCRIPTOR_MATCHER_BRUTEFORCE_HAMMING)
         elif algo == 'surf':
-            detect_algo = cv2.xfeatures2d_SURF().create()
-            matcher = cv2.BFMatcher(cv2.NORM_L1,crossCheck=False)
+            detect_algo = cv2.xfeatures2d_SURF().create(self.MAX_FEATURES)
         elif algo == 'sift':
-            detect_algo = cv2.xfeatures2d_SIFT().create()
-            matcher = cv2.BFMatcher(cv2.NORM_L1,crossCheck=False)
+            detect_algo = cv2.xfeatures2d_SIFT().create(self.MAX_FEATURES)
+        elif algo == 'fast':
+            detect_algo = cv2.FastFeatureDetector_create(self.MAX_FEATURES)
         else:
             print('\nDetect algorithm not exist.\n')
 
         self.keypoints1, descriptors1 = detect_algo.detectAndCompute(img1Gray, None)
         self.keypoints2, descriptors2 = detect_algo.detectAndCompute(img2Gray, None)
-
+        
+        matcher = cv2.BFMatcher(cv2.NORM_L1, crossCheck=False)
         matches = matcher.match(descriptors1, descriptors2, None)
 
         return matches
@@ -144,7 +143,7 @@ def read_file(data_folder):
             lon_temp = GPSdata['Longitude']
         distance_to_origin = sqrt((GPSdata['Latitude']-lat_temp)**2 + (GPSdata['Longitude']-lon_temp)**2)
         
-        # distance_to_origin = sqrt((GPSdata['Latitude']-0)**2 + (GPSdata['Longitude']-0)**2)
+        # distance_to_origin = sqrt(GPSdata['Latitude']**2 + GPSdata['Longitude']**2)
         image_info = ImageInfoFormat(
                 '{}/{}'.format(data_folder, image),
                 GPSdata['Latitude'],
@@ -164,7 +163,7 @@ def stitch(images_list):
     for i, temp in enumerate(images_list[1::]):
 
         stitcher = Stitcher('results/temp.jpg', temp.name, i)
-        matches = stitcher.find_keypoints('surf')
+        matches = stitcher.find_keypoints('sift')
         H = stitcher.get_good_matches(matches)
         print(H, '\n')
         stitcher.move_and_combine_images(H)
@@ -180,5 +179,4 @@ if __name__ == '__main__':
     data_folder = sys.argv[1]
     images_list = read_file(data_folder)
     stitch(images_list)
-    
-    return
+
