@@ -1,6 +1,7 @@
 import sys
 import os
 from os import listdir
+import re
 from GPSPhoto import gpsphoto
 import cv2
 import panorama
@@ -11,20 +12,22 @@ from math import sqrt
 
 
 class ImageInfoFormat(object):
-    def __init__(self, name, latitude, longitude, distance_to_origin):
-        self.name = name
+    def __init__(self, data_folder, name, latitude, longitude, distance_to_origin):
+        self.data_folder = data_folder
+        self.name = '{}/{}'.format(data_folder, name)
+        self.seq = int(re.findall('\d+', name)[0])
         self.latitude = latitude
         self.longitude = longitude
         self.distance_to_origin = distance_to_origin
 
     def __repr__(self):
-        return repr((self.name, self.latitude, self.longitude, self.distance_to_origin))
+        return repr((self.data_folder, self.name, self.seq, self.latitude, self.longitude, self.distance_to_origin))
 
 class Stitcher(object):
     def __init__(self, image1, image2, step):
         self.step = step
-        self.MAX_FEATURES = 5000
-        self.GOOD_MATCH_PERCENT = 0.25
+        self.MAX_FEATURES = 7000
+        self.GOOD_MATCH_PERCENT = 0.15
         self.image1 = cv2.imread(image1)
         self.image2 = cv2.imread(image2)
         self.keypoints1 = None
@@ -47,9 +50,12 @@ class Stitcher(object):
             detect_algo = cv2.FastFeatureDetector_create(self.MAX_FEATURES)
         else:
             print('\nDetect algorithm not exist.\n')
-
+        '''
         self.keypoints1, descriptors1 = detect_algo.detectAndCompute(img1Gray, None)
         self.keypoints2, descriptors2 = detect_algo.detectAndCompute(img2Gray, None)
+        '''
+        self.keypoints1, descriptors1 = detect_algo.detectAndCompute(self.image1, None)
+        self.keypoints2, descriptors2 = detect_algo.detectAndCompute(self.image2, None)
         
         matcher = cv2.BFMatcher(cv2.NORM_L1, crossCheck=False)
         matches = matcher.match(descriptors1, descriptors2, None)
@@ -145,14 +151,16 @@ def read_file(data_folder):
         
         # distance_to_origin = sqrt(GPSdata['Latitude']**2 + GPSdata['Longitude']**2)
         image_info = ImageInfoFormat(
-                '{}/{}'.format(data_folder, image),
+                data_folder,
+                image,
                 GPSdata['Latitude'],
                 GPSdata['Longitude'],
                 distance_to_origin)
         images_list.append(image_info)
         print(image_info)
     print(' Read images in {} images success. \n Total {} images.\n'.format(data_folder, len(images_list)))
-    images_list = sorted(images_list, key = lambda s: s.distance_to_origin)
+    # images_list = sorted(images_list, key = lambda s: s.distance_to_origin)
+    images_list = sorted(images_list, key = lambda s: s.seq)
 
     return images_list
 
@@ -161,7 +169,10 @@ def stitch(images_list):
     cv2.imwrite('results/temp.jpg', cv2.imread(images_list[0].name))
     print(' {}/{}   {}'.format(1, list_length, images_list[0].name))
     for i, temp in enumerate(images_list[1::]):
-
+        if images_list[i].seq != images_list[i-1].seq+1:
+            print(' {}/{}   {}'.format(i+2, list_length, temp.name))
+            print('image doesn\'t continue error')
+            continue
         stitcher = Stitcher('results/temp.jpg', temp.name, i)
         matches = stitcher.find_keypoints('sift')
         H = stitcher.get_good_matches(matches)
