@@ -26,8 +26,8 @@ class ImageInfoFormat(object):
 class Stitcher(object):
     def __init__(self, image1, image2, step):
         self.step = step
-        self.MAX_FEATURES = 7000
-        self.GOOD_MATCH_PERCENT = 0.15
+        self.MAX_FEATURES = 10000
+        self.GOOD_MATCH_PERCENT = 0.1
         self.image1 = cv2.imread(image1)
         self.image2 = cv2.imread(image2)
         self.keypoints1 = None
@@ -142,6 +142,7 @@ def read_file(data_folder):
     lat_temp = lon_temp = 0
     for image in listdir(data_folder):
         image_path = '{folder}/{filename}'.format(folder=data_folder, filename=image)
+        '''
         GPSdata = gpsphoto.getGPSData(image_path)
         # Another find stitching seq algorithm maybe better than this.
         if lat_temp == 0: # First loop, choose one image as origin point.
@@ -150,12 +151,14 @@ def read_file(data_folder):
         distance_to_origin = sqrt((GPSdata['Latitude']-lat_temp)**2 + (GPSdata['Longitude']-lon_temp)**2)
         
         # distance_to_origin = sqrt(GPSdata['Latitude']**2 + GPSdata['Longitude']**2)
+        '''
         image_info = ImageInfoFormat(
                 data_folder,
                 image,
-                GPSdata['Latitude'],
-                GPSdata['Longitude'],
-                distance_to_origin)
+                0, # GPSdata['Latitude'],
+                0, #GPSdata['Longitude'],
+                0, #distance_to_origin
+                )
         images_list.append(image_info)
         print(image_info)
     print(' Read images in {} images success. \n Total {} images.\n'.format(data_folder, len(images_list)))
@@ -163,27 +166,39 @@ def read_file(data_folder):
     images_list = sorted(images_list, key = lambda s: s.seq)
 
     return images_list
+    
 
 def stitch(images_list):
     list_length = len(images_list)
     cv2.imwrite('results/temp.jpg', cv2.imread(images_list[0].name))
     print(' {}/{}   {}'.format(1, list_length, images_list[0].name))
     for i, temp in enumerate(images_list[1::]):
-        if images_list[i].seq != images_list[i-1].seq+1:
-            print(' {}/{}   {}'.format(i+2, list_length, temp.name))
-            print('image doesn\'t continue error')
-            continue
         stitcher = Stitcher('results/temp.jpg', temp.name, i)
         matches = stitcher.find_keypoints('sift')
         H = stitcher.get_good_matches(matches)
         print(H, '\n')
         stitcher.move_and_combine_images(H)
         stitcher.save_step_result()
-
         print(' {}/{}   {}'.format(i+2, list_length, temp.name))
     print('stitch images finish.')
 
     return
+
+'''
+def stitch(images_list):
+    list_length = len(images_list)
+    for i in range( list_length - 1 ):
+        print(' {}/{}   {}'.format(i+1, list_length, images_list[i].name))
+        stitcher = Stitcher(images_list[i].name, images_list[i+1].name, i)
+        matches = stitcher.find_keypoints('sift')
+        H = stitcher.get_good_matches(matches)
+        print(H, '\n')
+        stitcher.move_and_combine_images(H)
+        stitcher.save_step_result()
+    print('stitch images finish.')    
+
+    return
+'''
 
 
 if __name__ == '__main__':
