@@ -113,6 +113,8 @@ class Stitcher(object):
         print(self.image1.shape)
         print(self.image2.shape)
 
+        self.output_img = black_to_transparent_bg_and_save(self.output_img)
+        self.image1 = black_to_transparent_bg_and_save(self.image1)
         self.image2 = black_to_transparent_bg_and_save(self.image2)
 
         self.output_img[
@@ -173,12 +175,15 @@ def read_file(data_folder):
     
 def stitch(images_list):
     list_length = len(images_list)
-    cv2.imwrite('results/image1.png', cv2.resize(cv2.imread(images_list[0].name, cv2.IMREAD_UNCHANGED), (1920, 1440)))
+    #cv2.imwrite('results/image1.png', cv2.resize(cv2.imread(images_list[0].name, cv2.IMREAD_UNCHANGED), (1920, 1440)))
+    cv2.imwrite('results/image1.png', cv2.imread(images_list[0].name, cv2.IMREAD_UNCHANGED))
     #cv2.imwrite('results/image1.png', cv2.resize(cv2.imread('results/result.png', cv2.IMREAD_UNCHANGED), (1920, 1440)))
     image1 = cv2.imread('results/image1.png', cv2.IMREAD_UNCHANGED)
     print(' {}/{}   {}'.format(1, list_length, images_list[0].name))
     for i, temp in enumerate(images_list[1::]):
-        cv2.imwrite('results/image2.png', cv2.resize(cv2.imread(temp.name, 1), (1920, 1440)))
+        #cv2.imwrite('results/image2.png', cv2.resize(cv2.imread(temp.name, 1), (1920, 1440)))
+        cv2.imwrite('results/image2.png', cv2.imread(temp.name, 1))
+
         image2 = cv2.imread('results/image2.png', cv2.IMREAD_UNCHANGED)
 
         stitcher = Stitcher(image1, image2, i, MAX_FEATURES = 3000, GOOD_MATCH_PERCENT= 0.25)
