@@ -3,24 +3,14 @@ import os
 from os import listdir
 import re
 import gc
-from GPSPhoto import gpsphoto
 import cv2
-import PIL
-import panorama
+from PIL import Image
 import numpy as np
 import imutils
 import shutil
-from math import sqrt
 
+from tools import read_file
 
-class ImageInfoFormat(object):
-    def __init__(self, data_folder, name):
-        self.data_folder = data_folder
-        self.name = '{}/{}'.format(data_folder, name)
-        self.seq = int(re.findall('\d+', name)[0])
-
-    def __repr__(self):
-        return repr((self.data_folder, self.name, self.seq))
 
 class Stitcher(object):
     def __init__(self, image1, image2, step, MAX_FEATURES, GOOD_MATCH_PERCENT):
@@ -78,9 +68,6 @@ class Stitcher(object):
             points1[i, :] = self.keypoints1[match.queryIdx].pt
             points2[i, :] = self.keypoints2[match.trainIdx].pt
 
-        print(points1)
-        print(points2)
-
         # Find homography
         H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
         return H
@@ -110,22 +97,22 @@ class Stitcher(object):
         bg_size = (x_max - x_min, y_max - y_min)
         self.output_img = cv2.warpPerspective(self.image1, H_translation.dot(H), bg_size)
 
-        print(self.image1.shape)
-        print(self.image2.shape)
+        cv2.imwrite('results/ttt.png', self.output_img)
 
-        self.output_img = black_to_transparent_bg_and_save(self.output_img)
-        self.image1 = black_to_transparent_bg_and_save(self.image1)
-        self.image2 = black_to_transparent_bg_and_save(self.image2)
+        self.image1 = self.black_to_transparent_bg(self.image1)
+        self.image2 = self.black_to_transparent_bg(self.image2)
 
         self.output_img[
             -y_min:self.image2.shape[0] - y_min, 
             -x_min:self.image2.shape[1] - x_min] = self.image2
 
-        transparent_result = black_to_transparent_bg_and_save(self.output_img)
+        self.output_img = self.black_to_transparent_bg(self.output_img)
+        
         cv2.imwrite('results/image1.png', self.image1)
         cv2.imwrite('results/image2.png', self.image2)
+        
         cv2.imwrite('results/matches.png', self.imMatches)
-        cv2.imwrite('results/result.png', transparent_result)
+        cv2.imwrite('results/result.png', self.output_img)
         '''
         cv2.imshow('Result.jpg', cv2.resize(self.output_img, (800, 800)))
         cv2.waitKey(1000)
@@ -145,53 +132,37 @@ class Stitcher(object):
 
         return
 
-def black_to_transparent_bg_and_save(image):
-    #src = cv2.imread(file_name, 1)
-    temp = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    _,alpha = cv2.threshold(temp, 0, 255, cv2.THRESH_BINARY)
-    try:    # judge 3 or 4 channel
-        b, g, r = cv2.split(image)
-    except(ValueError):
-        b, g, r, t = cv2.split(image)
+    def black_to_transparent_bg(self, image):
+        #src = cv2.imread(file_name, 1)
+        temp = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        _,alpha = cv2.threshold(temp, 0, 255, cv2.THRESH_BINARY)
+        try:    # judge 3 or 4 channel
+            b, g, r = cv2.split(image)
+        except(ValueError):
+            b, g, r, t = cv2.split(image)
+        rgba = [b, g, r, alpha]
+        dst = cv2.merge(rgba,4)
 
-    rgba = [b, g, r, alpha]
-    dst = cv2.merge(rgba,4)
-    return dst
+        return dst
 
-def read_file(data_folder):
-    images_list = []
-    lat_temp = lon_temp = 0
-    for image in listdir(data_folder):
-        image_path = '{folder}/{filename}'.format(folder=data_folder, filename=image)
-        image_info = ImageInfoFormat(
-                data_folder,
-                image,)
-        images_list.append(image_info)
-        print(image_info)
-    print(' Read images in {} images success. \n Total {} images.\n'.format(data_folder, len(images_list)))
-    images_list = sorted(images_list, key = lambda s: s.seq)
 
-    return images_list
-    
-def stitch(images_list):
+def stitch(images_list, MAX_FEATURES, GOOD_MATCH_PERCENT, find_keypoint_algorithm):
     list_length = len(images_list)
     #cv2.imwrite('results/image1.png', cv2.resize(cv2.imread(images_list[0].name, cv2.IMREAD_UNCHANGED), (1920, 1440)))
     cv2.imwrite('results/image1.png', cv2.imread(images_list[0].name, cv2.IMREAD_UNCHANGED))
-    #cv2.imwrite('results/image1.png', cv2.resize(cv2.imread('results/result.png', cv2.IMREAD_UNCHANGED), (1920, 1440)))
     image1 = cv2.imread('results/image1.png', cv2.IMREAD_UNCHANGED)
     print(' {}/{}   {}'.format(1, list_length, images_list[0].name))
     for i, temp in enumerate(images_list[1::]):
         #cv2.imwrite('results/image2.png', cv2.resize(cv2.imread(temp.name, 1), (1920, 1440)))
-        cv2.imwrite('results/image2.png', cv2.imread(temp.name, 1))
+        cv2.imwrite('results/image2.png', cv2.imread(temp.name, cv2.IMREAD_UNCHANGED))
 
         image2 = cv2.imread('results/image2.png', cv2.IMREAD_UNCHANGED)
 
-        stitcher = Stitcher(image1, image2, i, MAX_FEATURES = 3000, GOOD_MATCH_PERCENT= 0.25)
-        matches = stitcher.find_keypoints('sift')
+        stitcher = Stitcher(image1, image2, i, MAX_FEATURES, GOOD_MATCH_PERCENT)
+        matches = stitcher.find_keypoints(find_keypoint_algorithm)
         H = stitcher.get_good_matches(matches)
 
         image1 = stitcher.move_and_combine_images(H)
-        print(image1.shape)
 
         stitcher.save_step_result()
         print('\n {}/{}   {}'.format(i+2, list_length, temp.name))
@@ -207,5 +178,12 @@ def stitch(images_list):
 
 if __name__ == '__main__':
     data_folder = sys.argv[1]
+    #MAX_FEATURES = sys.argv[2]
+    MAX_FEATURES = 20000
+    #GOOD_MATCH_PERCENT = sys.argv[3]
+    GOOD_MATCH_PERCENT = 0.01
+    #find_keypoint_algorithm = sys.argv[4]
+    find_keypoint_algorithm = 'sift'
+
     images_list = read_file(data_folder)
-    stitch(images_list)
+    stitch(images_list, MAX_FEATURES, GOOD_MATCH_PERCENT, find_keypoint_algorithm)
