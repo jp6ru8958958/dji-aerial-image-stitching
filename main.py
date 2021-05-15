@@ -97,21 +97,16 @@ class Stitcher(object):
         bg_size = (x_max - x_min, y_max - y_min)
         self.output_img = cv2.warpPerspective(self.image1, H_translation.dot(H), bg_size)
 
-        cv2.imwrite('results/ttt.png', self.output_img)
-
         self.image1 = self.black_to_transparent_bg(self.image1)
         self.image2 = self.black_to_transparent_bg(self.image2)
-
-        self.output_img[
-            -y_min:self.image2.shape[0] - y_min, 
-            -x_min:self.image2.shape[1] - x_min] = self.image2
-
         self.output_img = self.black_to_transparent_bg(self.output_img)
         
+        self.output_img = self.combine_two_images_keep_transparent(self.output_img, self.image2)
+
         cv2.imwrite('results/image1.png', self.image1)
         cv2.imwrite('results/image2.png', self.image2)
         
-        cv2.imwrite('results/matches.png', self.imMatches)
+        #cv2.imwrite('results/matches.png', self.imMatches)
         cv2.imwrite('results/result.png', self.output_img)
         '''
         cv2.imshow('Result.jpg', cv2.resize(self.output_img, (800, 800)))
@@ -119,6 +114,15 @@ class Stitcher(object):
         cv2.destroyAllWindows()
         '''
         return self.output_img
+
+    def combine_two_images_keep_transparent(self, image1, image2):
+        image1 = Image.fromarray(cv2.cvtColor(image1, cv2.COLOR_BGR2RGBA))
+        image2 = Image.fromarray(cv2.cvtColor(image2, cv2.COLOR_BGR2RGBA))
+        r, g, b, a = image2.split()
+        image1.paste(image2, (0, 0), mask=a)
+        image1 = cv2.cvtColor(np.asarray(image1), cv2.COLOR_RGB2BGR)
+        image1 = self.black_to_transparent_bg(image1)
+        return image1
 
     def save_step_result(self, interlacing=1):
         if self.step == 0:
@@ -163,6 +167,7 @@ def stitch(images_list, MAX_FEATURES, GOOD_MATCH_PERCENT, find_keypoint_algorith
         H = stitcher.get_good_matches(matches)
 
         image1 = stitcher.move_and_combine_images(H)
+        print(image1.shape)
 
         stitcher.save_step_result()
         print('\n {}/{}   {}'.format(i+2, list_length, temp.name))
