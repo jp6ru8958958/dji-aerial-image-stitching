@@ -99,7 +99,7 @@ class Stitcher(object):
         # save
         cv2.imwrite('results/image1.png', self.image1)
         cv2.imwrite('results/image2.png', self.image2)
-        '''cv2.imwrite('results/matches.png', self.imMatches)'''
+        cv2.imwrite('results/matches.png', self.imMatches)
         cv2.imwrite('results/result.png', self.output_img)
         # show results by window
         '''

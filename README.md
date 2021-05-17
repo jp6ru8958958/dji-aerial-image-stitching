@@ -7,5 +7,5 @@ pip install -r requirements.txt
 ```
 Run:
 ```
-python main.py <dji aerial images folder>
+python main.py data/test
 ```
