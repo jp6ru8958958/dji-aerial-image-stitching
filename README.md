@@ -1,6 +1,4 @@
 # dji-aerial-image-stitching
-Program for DJI drone's aerial image stitching, using opencv.
-
 Create your virtual environment and enable it:
 ```
 virtualenv -p ~/.pyenv/versions/3.6.12/bin/python venv
