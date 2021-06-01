@@ -17,20 +17,35 @@ def image_grouping_to_temp(data_folder, tf):
 
     image_list = read_file(data_folder)
     folder_num = 0
+    '''
     for i in range(0, len(image_list), 2):
         folder_num += 1
         os.mkdir('image_temp/{}'.format(folder_num))
         for r in range(0, 4):
             try:
                 filename = image_list[i+r].name
-                if tf == 't':
+                if tf == 'resize':
                     cv2.imwrite('image_temp/{}/{}.png'.format(folder_num, r), cv2.resize(cv2.imread(filename, cv2.IMREAD_UNCHANGED), (1920, 1440)))
                 else:
                     cv2.imwrite('image_temp/{}/{}.png'.format(folder_num, r), cv2.imread(filename, cv2.IMREAD_UNCHANGED))
                 print(filename)
             except(IndexError):
                 break
-    os.mkdir('image_temp/results')
+    '''
+    for i in range(0, len(image_list)):
+        folder_num += 1
+        os.mkdir('image_temp/t{}'.format(folder_num))
+        for r in range(0, 4):
+            try:
+                filename = image_list[3*i+r].name
+                if tf == 'resize':
+                    cv2.imwrite('image_temp/t{}/{}.png'.format(folder_num, r), cv2.resize(cv2.imread(filename, cv2.IMREAD_UNCHANGED), (1920, 1440)))
+                else:
+                    cv2.imwrite('image_temp/t{}/{}.png'.format(folder_num, r), cv2.imread(filename, cv2.IMREAD_UNCHANGED))
+                print(filename, folder_num)
+            except(IndexError):
+                os.mkdir('image_temp/results')
+                return folder_num
     return folder_num
 
 def creat_sh_file(folder_num):
