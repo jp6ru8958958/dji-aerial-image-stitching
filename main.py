@@ -9,7 +9,7 @@ import numpy as np
 import imutils
 import shutil
 
-from tools import read_file
+from tools import read_file, combine_two_images_keep_transparent, black_to_transparent_bg
 
 
 class Stitcher(object):
@@ -40,11 +40,11 @@ class Stitcher(object):
         # Convert images to grayscale
         img1Gray = cv2.cvtColor(self.image1, cv2.COLOR_RGBA2BGRA)
         img2Gray = cv2.cvtColor(self.image2, cv2.COLOR_RGBA2BGRA)
+        
         self.keypoints1, descriptors1 = detect_algo.detectAndCompute(img1Gray, None)
         self.keypoints2, descriptors2 = detect_algo.detectAndCompute(img2Gray, None)
         matcher = cv2.BFMatcher(cv2.NORM_L1, crossCheck=False)
         matches = matcher.match(descriptors1, descriptors2, None)
-
         return matches
 
     def get_good_matches(self, matches):
@@ -63,10 +63,9 @@ class Stitcher(object):
             points2[i, :] = self.keypoints2[match.trainIdx].pt
         # Find homography
         H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
-
         return H
 
-    def move_and_combine_images(self, H):
+    def move_and_combine_images(self, H, warp):
         # calculate background size
         points0 = np.array([
             [0, 0], 
@@ -86,16 +85,28 @@ class Stitcher(object):
         points = np.concatenate((points0, points2), axis=0)
         [x_min, y_min] = np.int32(points.min(axis=0).ravel() - 0.5)
         [x_max, y_max] = np.int32(points.max(axis=0).ravel() + 0.5)
-        H_translation = np.array([[1, 0, -x_min], [0, 1, -y_min], [0, 0, 1]])
+
         # perspective
         bg_size = (x_max - x_min, y_max - y_min)
-        self.output_img = cv2.warpPerspective(self.image1, H_translation.dot(H), bg_size)
+        print(bg_size)
+        '''
+        self.image1 = self.black_to_transparent_bg(self.image1)
+        self.image2 = self.black_to_transparent_bg(self.image2)
+        '''
+        if warp == 'p':
+            H_translation = np.array([[1, 0, -x_min], [0, 1, -y_min], [0, 0, 1]])
+            self.output_img = cv2.warpPerspective(self.image1, H_translation.dot(H), bg_size, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+        elif warp == 'a':
+            H_translation = np.array([[1, 0, -x_min], [0, 1, -y_min]])
+            self.output_img = cv2.warpAffine(self.image1, H_translation.dot(H), bg_size, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+        '''
         # transparent process
         self.image1 = self.black_to_transparent_bg(self.image1)
         self.image2 = self.black_to_transparent_bg(self.image2)
         self.output_img = self.black_to_transparent_bg(self.output_img)
+        '''
         # image combine
-        self.output_img = self.combine_two_images_keep_transparent(self.output_img, self.image2)
+        self.output_img = combine_two_images_keep_transparent(self.output_img, self.image2, 0, 0)
         # save
         cv2.imwrite('results/image1.png', self.image1)
         cv2.imwrite('results/image2.png', self.image2)
@@ -109,17 +120,6 @@ class Stitcher(object):
         '''
         return self.output_img
 
-    def combine_two_images_keep_transparent(self, image1, image2):
-        # using PIL
-        image1 = Image.fromarray(cv2.cvtColor(image1, cv2.COLOR_BGR2RGBA))
-        image2 = Image.fromarray(cv2.cvtColor(image2, cv2.COLOR_BGR2RGBA))
-        r, g, b, a = image2.split()
-        image1.paste(image2, (0, 0), mask=a)
-        image1 = cv2.cvtColor(np.asarray(image1), cv2.COLOR_RGB2BGR)
-        image1 = self.black_to_transparent_bg(image1)
-        
-        return image1
-
     def save_step_result(self, interlacing=1):
         if self.step == 0:
             try:
@@ -129,33 +129,22 @@ class Stitcher(object):
             os.mkdir('results/steps')
         if self.step % interlacing == 0:
             cv2.imwrite('results/steps/step_{}.png'.format(str(self.step+1)), self.output_img)
-
         return
+    
 
-    def black_to_transparent_bg(self, image):
-        temp = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        _,alpha = cv2.threshold(temp, 0, 255, cv2.THRESH_BINARY)
-        try:    # judge 3 or 4 channel
-            b, g, r = cv2.split(image)
-        except(ValueError):
-            b, g, r, t = cv2.split(image)
-        rgba = [b, g, r, alpha]
-        dst = cv2.merge(rgba,4)
-
-        return dst
-
-
-def stitch(images_list, MAX_FEATURES, GOOD_MATCH_PERCENT, find_keypoint_algorithm):
+def stitch(images_list, MAX_FEATURES, GOOD_MATCH_PERCENT, find_keypoint_algorithm, warp):
     list_length = len(images_list)
     image1 = cv2.imread(images_list[0].name, cv2.IMREAD_UNCHANGED)
+    #image1 = cv2.resize(cv2.imread(images_list[0].name, cv2.IMREAD_UNCHANGED), (1920, 1440))
     print(' {}/{}   {}'.format(1, list_length, images_list[0].name))
-    for i, temp in enumerate(images_list[1::]):
+    for i, temp in enumerate(images_list[1::1]):
         image2 = cv2.imread(temp.name, cv2.IMREAD_UNCHANGED)
+        #image2 = cv2.resize(cv2.imread(temp.name, cv2.IMREAD_UNCHANGED), (1920, 1440))
 
         stitcher = Stitcher(image1, image2, i, MAX_FEATURES, GOOD_MATCH_PERCENT)
         matches = stitcher.find_keypoints(find_keypoint_algorithm)
         H = stitcher.get_good_matches(matches)
-        image1 = stitcher.move_and_combine_images(H)
+        image1 = stitcher.move_and_combine_images(H, warp)
         stitcher.save_step_result()
         print(image1.shape)
         print('\n {}/{}   {}'.format(i+2, list_length, temp.name))
@@ -164,18 +153,17 @@ def stitch(images_list, MAX_FEATURES, GOOD_MATCH_PERCENT, find_keypoint_algorith
         gc.collect()
     cv2.imwrite('result.png', image1)
     print('stitch images finish.')
-
     return
 
 
 if __name__ == '__main__':
     data_folder = sys.argv[1]
-    '''MAX_FEATURES = sys.argv[2]'''
-    MAX_FEATURES = 25000
-    '''GOOD_MATCH_PERCENT = sys.argv[3]'''
-    GOOD_MATCH_PERCENT = 0.01
-    '''find_keypoint_algorithm = sys.argv[4]'''
-    find_keypoint_algorithm = 'sift'
-
+    MAX_FEATURES = int(sys.argv[2])
+    '''MAX_FEATURES = 30000'''
+    GOOD_MATCH_PERCENT = float(sys.argv[3])
+    '''GOOD_MATCH_PERCENT = 0.01'''
+    find_keypoint_algorithm = sys.argv[4]
+    '''find_keypoint_algorithm = \'orb\''''
+    warp = sys.argv[5]
     images_list = read_file(data_folder)
-    stitch(images_list, MAX_FEATURES, GOOD_MATCH_PERCENT, find_keypoint_algorithm)
+    stitch(images_list, MAX_FEATURES, GOOD_MATCH_PERCENT, find_keypoint_algorithm, warp)

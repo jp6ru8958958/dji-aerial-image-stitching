@@ -4,60 +4,53 @@ import sys
 import os
 import cv2
 import shutil
+import numpy as np
 
-from tools import read_file
+from tools import read_file, combine_two_images_keep_transparent, black_to_transparent_bg
 
 
-def image_grouping_to_temp(data_folder, tf):
+def image_grouping_to_temp(data_folder, split_len, full_split, tf):
     try:
-        os.mkdir('image_temp')
+        os.mkdir(f'{data_folder}/classification')
     except(FileExistsError):
-        shutil.rmtree('image_temp')
-        os.mkdir('image_temp')
+        shutil.rmtree(f'{data_folder}/classification')
+        os.mkdir(f'{data_folder}/classification')
 
     image_list = read_file(data_folder)
     folder_num = 0
-    '''
-    for i in range(0, len(image_list), 2):
-        folder_num += 1
-        os.mkdir('image_temp/{}'.format(folder_num))
-        for r in range(0, 4):
-            try:
-                filename = image_list[i+r].name
-                if tf == 'resize':
-                    cv2.imwrite('image_temp/{}/{}.png'.format(folder_num, r), cv2.resize(cv2.imread(filename, cv2.IMREAD_UNCHANGED), (1920, 1440)))
-                else:
-                    cv2.imwrite('image_temp/{}/{}.png'.format(folder_num, r), cv2.imread(filename, cv2.IMREAD_UNCHANGED))
-                print(filename)
-            except(IndexError):
-                break
-    '''
     for i in range(0, len(image_list)):
         folder_num += 1
-        os.mkdir('image_temp/t{}'.format(folder_num))
-        for r in range(0, 4):
+        os.mkdir(f'{data_folder}/classification/t{folder_num}')
+        for r in range(0, split_len):
             try:
-                filename = image_list[3*i+r].name
-                if tf == 'resize':
-                    cv2.imwrite('image_temp/t{}/{}.png'.format(folder_num, r), cv2.resize(cv2.imread(filename, cv2.IMREAD_UNCHANGED), (1920, 1440)))
+                if full_split == 'connect':
+                    filename = image_list[(split_len-1)*i+r].name
                 else:
-                    cv2.imwrite('image_temp/t{}/{}.png'.format(folder_num, r), cv2.imread(filename, cv2.IMREAD_UNCHANGED))
+                    filename = image_list[(split_len)*i+r].name
+
+                image = cv2.imread(filename, cv2.IMREAD_UNCHANGED)
+                if tf == 'resize':
+                    image = cv2.resize(image, (1920, 1440))
+                    '''
+                    bg = np.zeros((1440, 1920*2, 4), dtype=np.uint8)
+                    image = combine_two_images_keep_transparent(bg, image, 960, 0) 
+                    '''
+                    cv2.imwrite(f'{data_folder}/classification/t{folder_num}/{r}.png', image)
+                else:
+                    cv2.imwrite(f'{data_folder}/classification/t{folder_num}/{r}.png', image)
                 print(filename, folder_num)
             except(IndexError):
-                os.mkdir('image_temp/results')
                 return folder_num
     return folder_num
-
-def creat_sh_file(folder_num):
-    f = open('start.sh', 'w')
-    f.write('for i in {1..{}}\ndo\n\tpython main.py image_temp/$i\n\tcp results/result.png image_temp/results/$i.png\ndone'.format(folder_num))
-    f.close()
 
 
 if __name__ == '__main__':
     data_folder = sys.argv[1]
-    tf = sys.argv[2]
-    folder_num = image_grouping_to_temp(data_folder, tf)
+    split_len = sys.argv[2]
+    full_split = sys.argv[3]
+    tf = sys.argv[4]
+    
+    folder_num = image_grouping_to_temp(data_folder, int(split_len), full_split, tf)
     #creat_sh_file(folder_num)
-    print('Creat execution file success.')
+    #print('Create execution file success.')
     
