@@ -7,7 +7,7 @@ pip install -r requirements.txt
 ```
 Run:
 ```
-python main.py data/test
+python main.py <data folder path>  300 0.05 surf p
 ```
 image1:
 ![image1](results/image1.png)
